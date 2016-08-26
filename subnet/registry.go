@@ -57,6 +57,8 @@ type EtcdConfig struct {
 	Prefix    string
 	Username  string
 	Password  string
+	TtlDuration time.Duration
+	RenewMargin time.Duration
 }
 
 type etcdNewFunc func(c *EtcdConfig) (etcd.KeysAPI, error)

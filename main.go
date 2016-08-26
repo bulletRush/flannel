@@ -39,6 +39,7 @@ import (
 	_ "github.com/coreos/flannel/backend/hostgw"
 	_ "github.com/coreos/flannel/backend/udp"
 	_ "github.com/coreos/flannel/backend/vxlan"
+	"time"
 )
 
 type CmdLineOpts struct {
@@ -56,6 +57,8 @@ type CmdLineOpts struct {
 	remoteKeyfile  string
 	remoteCertfile string
 	remoteCAFile   string
+	ttlDuration    time.Duration
+	renewMargin    time.Duration
 }
 
 var opts CmdLineOpts
@@ -75,6 +78,8 @@ func init() {
 	flag.StringVar(&opts.remoteCAFile, "remote-cafile", "", "SSL Certificate Authority file used to secure client/server communication")
 	flag.BoolVar(&opts.help, "help", false, "print this message")
 	flag.BoolVar(&opts.version, "version", false, "print version and exit")
+	flag.DurationVar(&opts.ttlDuration, "ttl", time.Hour * 24, "ttl duration")s
+	flag.DurationVar(&opts.renewMargin, "renew-margin", time.Hour, "renew lease margin")
 }
 
 func newSubnetManager() (subnet.Manager, error) {
@@ -90,6 +95,8 @@ func newSubnetManager() (subnet.Manager, error) {
 		Prefix:    opts.etcdPrefix,
 		Username:  opts.etcdUsername,
 		Password:  opts.etcdPassword,
+		TtlDuration: opts.ttlDuration,
+		RenewMargin: opts.renewMargin,
 	}
 
 	return subnet.NewLocalManager(cfg)

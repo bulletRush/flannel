@@ -28,11 +28,12 @@ import (
 
 const (
 	raceRetries = 10
-	subnetTTL   = 24 * time.Hour
 )
 
 type LocalManager struct {
 	registry Registry
+	ttlDuration time.Duration
+	renewMargin time.Duration
 }
 
 type watchCursor struct {
@@ -72,12 +73,14 @@ func NewLocalManager(config *EtcdConfig) (Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newLocalManager(r), nil
+	return newLocalManager(r, config.TtlDuration, config.RenewMargin), nil
 }
 
-func newLocalManager(r Registry) Manager {
+func newLocalManager(r Registry, ttlDuration, renewMargin time.Duration) Manager {
 	return &LocalManager{
 		registry: r,
+		ttlDuration: ttlDuration,
+		renewMargin: renewMargin,
 	}
 }
 
@@ -136,7 +139,7 @@ func (m *LocalManager) tryAcquireLease(ctx context.Context, network string, conf
 			ttl := time.Duration(0)
 			if !l.Expiration.IsZero() {
 				// Not a reservation
-				ttl = subnetTTL
+				ttl = m.ttlDuration
 			}
 			exp, err := m.registry.updateSubnet(ctx, network, l.Subnet, attrs, ttl, 0)
 			if err != nil {
@@ -160,13 +163,13 @@ func (m *LocalManager) tryAcquireLease(ctx context.Context, network string, conf
 		return nil, err
 	}
 
-	exp, err := m.registry.createSubnet(ctx, network, sn, attrs, subnetTTL)
+	exp, err := m.registry.createSubnet(ctx, network, sn, attrs, )
 	switch {
 	case err == nil:
 		// exp is etcd server side time, so we need check it
 		// if client time is slow than server an hour
-		clientExp := time.Now().Add(subnetTTL)
-		if clientExp.Add(-1 * time.Hour).After(clientExp) {
+		clientExp := time.Now().Add(m.ttlDuration)
+		if clientExp.Add(-1 * m.renewMargin).After(clientExp) {
 			log.Errorf(
 				"client expiration time(%#v) is later than server(%#v)\n",
 				clientExp, exp,
@@ -213,7 +216,7 @@ func (m *LocalManager) RevokeLease(ctx context.Context, network string, sn ip.IP
 }
 
 func (m *LocalManager) RenewLease(ctx context.Context, network string, lease *Lease) error {
-	exp, err := m.registry.updateSubnet(ctx, network, lease.Subnet, &lease.Attrs, subnetTTL, 0)
+	exp, err := m.registry.updateSubnet(ctx, network, lease.Subnet, &lease.Attrs, m.ttlDuration, 0)
 	if err != nil {
 		return err
 	}
@@ -459,7 +462,7 @@ func (m *LocalManager) tryRemoveReservation(ctx context.Context, network string,
 	}
 
 	// add back the TTL
-	_, err = m.registry.updateSubnet(ctx, network, subnet, &sub.Attrs, subnetTTL, asof)
+	_, err = m.registry.updateSubnet(ctx, network, subnet, &sub.Attrs, m.ttlDuration, asof)
 	if isErrEtcdTestFailed(err) {
 		return errTryAgain
 	}
