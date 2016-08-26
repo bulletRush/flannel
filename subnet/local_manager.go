@@ -163,6 +163,15 @@ func (m *LocalManager) tryAcquireLease(ctx context.Context, network string, conf
 	exp, err := m.registry.createSubnet(ctx, network, sn, attrs, subnetTTL)
 	switch {
 	case err == nil:
+		// exp is etcd server side time, so we need check it
+		// if client time is slow than server an hour
+		clientExp := time.Now().Add(subnetTTL)
+		if clientExp.Add(-1 * time.Hour).After(clientExp) {
+			log.Errorf(
+				"client expiration time(%#v) is later than server(%#v)\n",
+				clientExp, exp,
+			)
+		}
 		return &Lease{
 			Subnet:     sn,
 			Attrs:      *attrs,
